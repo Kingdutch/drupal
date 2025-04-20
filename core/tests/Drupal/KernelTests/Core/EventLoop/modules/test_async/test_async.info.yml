@@ -1,0 +1,5 @@
+name: Test Async
+type: module
+description: 'Test that async scheduled tasks are processed in a request.'
+package: Testing
+version: VERSION

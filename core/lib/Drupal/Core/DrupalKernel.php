@@ -682,6 +682,10 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
    * {@inheritdoc}
    */
   public function terminate(Request $request, Response $response): void {
+    // Run the event loop to process any pending asynchronous tasks.
+    // This allows scheduled tasks using Revolt's event loop to complete
+    // execution before the request terminates completely.
+    \Revolt\EventLoop::run();
     if ($this->booted && $this->getHttpKernel() instanceof TerminableInterface) {
       // Only run terminate() when essential services have been set up properly
       // by preHandle() before.
