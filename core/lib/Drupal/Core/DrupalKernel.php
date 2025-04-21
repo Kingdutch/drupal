@@ -30,6 +30,7 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\DependencyInjection\ParameterBag\ParameterBag;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\Session\Session;
 use Symfony\Component\HttpFoundation\Session\Storage\MockArraySessionStorage;
@@ -261,8 +262,20 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
    * The app root.
    *
    * @var string
+   *
+   * @deprecated in drupal:11.0.0 and is removed from drupal:12.0.0. Use
+   *   $appContext->getAppRoot() instead.
+   *
+   * @see https://www.drupal.org/node/2529170
    */
   protected $root;
+
+  /**
+   * The application context.
+   *
+   * @var \Drupal\Core\AppContextInterface
+   */
+  protected $appContext;
 
   /**
    * Create a DrupalKernel object from a request.
@@ -277,9 +290,10 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
    * @param bool $allow_dumping
    *   (optional) FALSE to stop the container from being written to or read
    *   from disk. Defaults to TRUE.
-   * @param string $app_root
-   *   (optional) The path to the application root as a string. If not supplied,
-   *   the application root will be computed.
+   * @param string|\Drupal\Core\AppContextInterface $app_root
+   *   (optional) The application context object or the path to the application
+   *   root as a string. If a string is provided, an AppContext will be created.
+   *   If not supplied, the application root will be computed.
    *
    * @return static
    *
@@ -288,6 +302,7 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
    */
   public static function createFromRequest(Request $request, $class_loader, $environment, $allow_dumping = TRUE, $app_root = NULL) {
     $kernel = new static($environment, $class_loader, $allow_dumping, $app_root);
+    // We use the original $app_root parameter for bootEnvironment to maintain compatibility
     static::bootEnvironment($app_root);
     $kernel->initializeSettings($request);
     return $kernel;
@@ -304,18 +319,36 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
    * @param bool $allow_dumping
    *   (optional) FALSE to stop the container from being written to or read
    *   from disk. Defaults to TRUE.
-   * @param string $app_root
-   *   (optional) The path to the application root as a string. If not supplied,
-   *   the application root will be computed.
+   * @param string|\Drupal\Core\AppContextInterface $app_root
+   *   (optional) The application context object or the path to the application
+   *   root as a string. If a string is provided, an AppContext will be created.
+   *   If not supplied, the application root will be computed.
    */
   public function __construct($environment, $class_loader, $allow_dumping = TRUE, $app_root = NULL) {
     $this->environment = $environment;
     $this->classLoader = $class_loader;
     $this->allowDumping = $allow_dumping;
+
+    // Handle different types of $app_root parameter.
     if ($app_root === NULL) {
       $app_root = static::guessApplicationRoot();
     }
-    $this->root = $app_root;
+
+    if ($app_root instanceof AppContextInterface) {
+      $this->appContext = $app_root;
+      // @phpstan-ignore-next-line
+      $this->root = $app_root->getAppRoot();
+    }
+    else {
+      // For backward compatibility, store the string value in $root.
+      // @phpstan-ignore-next-line
+      $this->root = $app_root;
+
+      // Temporarily create a dummy RequestStack since we don't have access to
+      // the container yet. It will be replaced when the container is initialized.
+      $request_stack = new RequestStack();
+      $this->appContext = new AppContext($request_stack, $app_root);
+    }
   }
 
   /**
@@ -468,7 +501,7 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
    * {@inheritdoc}
    */
   public function getAppRoot() {
-    return $this->root;
+    return $this->appContext->getAppRoot();
   }
 
   /**
@@ -498,7 +531,7 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
       }
     }
     FileCacheFactory::setConfiguration($configuration);
-    FileCacheFactory::setPrefix(Settings::getApcuPrefix('file_cache', $this->root));
+    FileCacheFactory::setPrefix(Settings::getApcuPrefix('file_cache', $this->appContext->getAppRoot()));
 
     $this->bootstrapContainer = new $this->bootstrapContainerClass(Settings::get('bootstrap_container_definition', $this->defaultBootstrapContainerDefinition));
 
@@ -510,7 +543,7 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
       // Vary the APCu key by which modules are installed to allow
       // class_exists() checks to determine functionality.
       $id = 'class_loader:' . crc32(implode(':', array_keys($this->container->getParameter('container.modules'))));
-      $prefix = Settings::getApcuPrefix($id, $this->root);
+      $prefix = Settings::getApcuPrefix($id, $this->appContext->getAppRoot());
       $this->classLoader->setApcuPrefix($prefix);
     }
 
@@ -563,11 +596,11 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
    * {@inheritdoc}
    */
   public function loadLegacyIncludes() {
-    require_once $this->root . '/core/includes/common.inc';
-    require_once $this->root . '/core/includes/module.inc';
-    require_once $this->root . '/core/includes/theme.inc';
-    require_once $this->root . '/core/includes/form.inc';
-    require_once $this->root . '/core/includes/errors.inc';
+    require_once $this->appContext->getAppRoot() . '/core/includes/common.inc';
+    require_once $this->appContext->getAppRoot() . '/core/includes/module.inc';
+    require_once $this->appContext->getAppRoot() . '/core/includes/theme.inc';
+    require_once $this->appContext->getAppRoot() . '/core/includes/form.inc';
+    require_once $this->appContext->getAppRoot() . '/core/includes/errors.inc';
   }
 
   /**
@@ -772,7 +805,7 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
   protected function moduleData($module) {
     if (!$this->moduleData) {
       // First, find profiles.
-      $listing = new ExtensionDiscovery($this->root);
+      $listing = new ExtensionDiscovery($this->appContext->getAppRoot());
       $listing->setProfileDirectories([]);
       $all_profiles = $listing->scan('profile');
       $profiles = array_intersect_key($all_profiles, $this->moduleList);
@@ -985,18 +1018,21 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
    * This method sets PHP environment options we want to be sure are set
    * correctly for security or just saneness.
    *
-   * @param string $app_root
-   *   (optional) The path to the application root as a string. If not supplied,
-   *   the application root will be computed.
+   * @param string|\Drupal\Core\AppContextInterface $app_root
+   *   (optional) The application context object or the path to the application
+   *   root as a string. If not supplied, the application root will be computed.
    */
   public static function bootEnvironment($app_root = NULL) {
     if (static::$isEnvironmentInitialized) {
       return;
     }
 
-    // Determine the application root if it's not supplied.
+    // Handle different types of $app_root parameter.
     if ($app_root === NULL) {
       $app_root = static::guessApplicationRoot();
+    }
+    elseif ($app_root instanceof AppContextInterface) {
+      $app_root = $app_root->getAppRoot();
     }
 
     error_reporting(E_ALL);
@@ -1072,7 +1108,7 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
   protected function initializeSettings(Request $request) {
     $site_path = static::findSitePath($request);
     $this->setSitePath($site_path);
-    Settings::initialize($this->root, $site_path, $this->classLoader);
+    Settings::initialize($this->appContext->getAppRoot(), $site_path, $this->classLoader);
 
     // Initialize our list of trusted HTTP Host headers to protect against
     // header attacks.
@@ -1087,6 +1123,9 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
   /**
    * Bootstraps the legacy global request variables.
    *
+   * Uses the AppContextInterface to set global variables for backward
+   * compatibility, while providing a service-based approach for future code.
+   *
    * @param \Symfony\Component\HttpFoundation\Request $request
    *   The current request.
    *
@@ -1098,30 +1137,22 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
     global $base_path, $base_root;
     global $base_secure_url, $base_insecure_url;
 
-    // Create base URL.
-    $base_root = $request->getSchemeAndHttpHost();
-    $base_url = $base_root;
+    // Replace the RequestStack in AppContext with the one from the current request
+    // when the container has been initialized.
+    if ($this->container && $this->container->has('request_stack')) {
+      // This ensures the AppContext has the current request stack.
+      $this->appContext = new AppContext(
+        $this->container->get('request_stack'),
+        $this->appContext->getAppRoot()
+      );
+    }
 
-    // For a request URI of '/index.php/foo', $_SERVER['SCRIPT_NAME'] is
-    // '/index.php', whereas $_SERVER['PHP_SELF'] is '/index.php/foo'.
-    if ($dir = rtrim(dirname($request->server->get('SCRIPT_NAME')), '\/')) {
-      // Remove "core" directory if present, allowing install.php,
-      // authorize.php, and others to auto-detect a base path.
-      $core_position = strrpos($dir, '/core');
-      if ($core_position !== FALSE && strlen($dir) - 5 == $core_position) {
-        $base_path = substr($dir, 0, $core_position);
-      }
-      else {
-        $base_path = $dir;
-      }
-      $base_url .= $base_path;
-      $base_path .= '/';
-    }
-    else {
-      $base_path = '/';
-    }
-    $base_secure_url = str_replace('http://', 'https://', $base_url);
-    $base_insecure_url = str_replace('https://', 'http://', $base_url);
+    // Set global variables from AppContext values.
+    $base_path = $this->appContext->getBasePath();
+    $base_url = $this->appContext->getBaseUrl();
+    $base_root = $this->appContext->getBaseRoot();
+    $base_secure_url = $this->appContext->getSecureBaseUrl();
+    $base_insecure_url = $this->appContext->getInsecureBaseUrl();
   }
 
   /**
@@ -1323,7 +1354,7 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
     foreach (['Core', 'Component'] as $parent_directory) {
       $path = 'core/lib/Drupal/' . $parent_directory;
       $parent_namespace = 'Drupal\\' . $parent_directory;
-      foreach (new \DirectoryIterator($this->root . '/' . $path) as $component) {
+      foreach (new \DirectoryIterator($this->appContext->getAppRoot() . '/' . $path) as $component) {
         /** @var \DirectoryIterator $component */
         $pathname = $component->getPathname();
         if (!$component->isDot() && $component->isDir() && (
@@ -1562,11 +1593,11 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
     foreach ($namespaces as $prefix => $paths) {
       if (is_array($paths)) {
         foreach ($paths as $key => $value) {
-          $paths[$key] = $this->root . '/' . $value;
+          $paths[$key] = $this->appContext->getAppRoot() . '/' . $value;
         }
       }
       elseif (is_string($paths)) {
-        $paths = $this->root . '/' . $paths;
+        $paths = $this->appContext->getAppRoot() . '/' . $paths;
       }
       $class_loader->addPsr4($prefix . '\\', $paths);
     }

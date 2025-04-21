@@ -40,7 +40,7 @@ class TestRunnerKernel extends DrupalKernel {
       'system' => 0,
     ];
     $this->moduleData = [
-      'system' => new Extension($this->root, 'module', 'core/modules/system/system.info.yml', 'system.module'),
+      'system' => new Extension($this->appContext->getAppRoot(), 'module', 'core/modules/system/system.info.yml', 'system.module'),
     ];
   }
 
