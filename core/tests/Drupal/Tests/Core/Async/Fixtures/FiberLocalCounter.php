@@ -49,6 +49,13 @@ class FiberLocalCounter implements FiberLocalCounterInterface {
     return $this->log->getArrayCopy();
   }
 
+  /**
+   * A static method, forwarded to the class by the proxy.
+   */
+  public static function describe(string $what): string {
+    return 'counts ' . $what;
+  }
+
   public function __clone() {
     $this->log = clone $this->log;
   }

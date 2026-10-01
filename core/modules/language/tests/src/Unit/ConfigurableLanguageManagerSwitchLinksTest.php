@@ -4,14 +4,18 @@ declare(strict_types=1);
 
 namespace Drupal\Tests\language\Unit;
 
+use Drupal\Core\Async\ContextStorage;
+use Drupal\Core\Async\FiberLocalServices;
 use Drupal\Core\Cache\CacheBackendInterface;
 use Drupal\Core\Config\ConfigFactoryInterface;
+use Drupal\Core\DependencyInjection\ContainerBuilder;
 use Drupal\Core\Extension\ModuleHandlerInterface;
 use Drupal\Core\Language\LanguageDefault;
 use Drupal\Core\Language\LanguageInterface;
 use Drupal\Core\Url;
 use Drupal\language\Config\LanguageConfigFactoryOverrideInterface;
 use Drupal\language\ConfigurableLanguageManager;
+use Drupal\language\FiberLocalProxy\ConfigurableLanguageManager as ConfigurableLanguageManagerProxy;
 use Drupal\language\LanguageNegotiationMethodInterface;
 use Drupal\language\LanguageNegotiatorInterface;
 use Drupal\language\LanguageSwitcherInterface;
@@ -27,6 +31,22 @@ use Symfony\Component\HttpFoundation\RequestStack;
 #[CoversClass(ConfigurableLanguageManager::class)]
 #[Group('language')]
 class ConfigurableLanguageManagerSwitchLinksTest extends UnitTestCase {
+
+  /**
+   * {@inheritdoc}
+   */
+  protected function setUp(): void {
+    parent::setUp();
+    ContextStorage::reset();
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  protected function tearDown(): void {
+    ContextStorage::reset();
+    parent::tearDown();
+  }
 
   /**
    * Test that change of negotiated languages stays in getLanguageSwitchLinks().
@@ -110,6 +130,14 @@ class ConfigurableLanguageManagerSwitchLinksTest extends UnitTestCase {
       $this->createStub(CacheBackendInterface::class),
     );
     $languageManager->setNegotiator($negotiator);
+
+    // The language manager is a fiber-local service: callers reach it through
+    // a proxy that gives every fiber its own copy. Wrap the instance the way
+    // the container does.
+    $container = new ContainerBuilder();
+    $container->set(FiberLocalServices::ORIGINAL_SERVICE_PREFIX . 'language_manager', $languageManager);
+    $languageManager = new ConfigurableLanguageManagerProxy($container, 'language_manager');
+
     // Initialize the negotiated languages.
     $originalLanguage = $languageManager->getCurrentLanguage();
 

@@ -7,7 +7,7 @@ use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\Entity\EntityInterface;
 use Drupal\Core\Entity\EntityStorageInterface;
 use Drupal\Core\Language\LanguageManagerInterface;
-use Drupal\language\ConfigurableLanguageManager;
+use Drupal\language\ConfigurableLanguageManagerInterface;
 use Drupal\migrate\Plugin\MigrationInterface;
 use Drupal\migrate\MigrateException;
 use Drupal\migrate\Plugin\MigrateIdMapInterface;
@@ -204,7 +204,7 @@ class EntityConfigBase extends Entity {
     // This is a translation if the language in the active config does not
     // match the language of this row.
     $translation = FALSE;
-    if ($this->isTranslationDestination() && $row->hasDestinationProperty('langcode') && $this->languageManager instanceof ConfigurableLanguageManager) {
+    if ($this->isTranslationDestination() && $row->hasDestinationProperty('langcode') && $this->languageManager instanceof ConfigurableLanguageManagerInterface) {
       $config = $entity->getConfigDependencyName();
       $langcode = $this->configFactory->get('langcode');
       if ($langcode != $row->getDestinationProperty('langcode')) {

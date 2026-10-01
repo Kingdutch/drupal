@@ -43,6 +43,8 @@ if (!preg_match('/([a-zA-Z0-9_]+\\\\[a-zA-Z0-9_]+)\\\\(.+)/', $class_name, $matc
   fwrite(STDERR, "The class name must have at least three namespace segments.\n");
   exit(1);
 }
+// The class may belong to a module that is not installed on this site.
+$autoloader->addPsr4($match[1] . '\\', $namespace_root);
 $proxy_filename = $namespace_root . '/' . FiberLocalProxyBuilder::NAMESPACE_SEGMENT . '/' . str_replace('\\', '/', $match[2]) . '.php';
 
 $file_string = "<?php\n// phpcs:ignoreFile\n\n/**\n * This file was generated via php core/scripts/generate-fiber-local-proxy.php '$class_name' \"$namespace_root\".\n */\n" . (new FiberLocalProxyBuilder())->build($class_name);

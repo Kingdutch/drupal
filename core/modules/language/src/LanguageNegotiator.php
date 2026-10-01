@@ -52,9 +52,11 @@ class LanguageNegotiator implements LanguageNegotiatorInterface {
   /**
    * Initializes the injected language manager with the negotiator.
    *
-   * This should be called right after instantiating the negotiator to make it
-   * available to the language manager without introducing a circular
-   * dependency.
+   * The container no longer calls this: the language manager's definition
+   * injects the negotiator itself, so that the instance the container builds
+   * carries it. It remains for code that wires the two by hand.
+   *
+   * @see \Drupal\language\LanguageServiceProvider::alter()
    */
   public function initLanguageManager() {
     $this->languageManager->setNegotiator($this);

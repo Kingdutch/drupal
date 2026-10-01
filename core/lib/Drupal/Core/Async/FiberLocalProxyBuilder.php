@@ -91,7 +91,14 @@ EOS;
    */
   protected function buildMethodBody(\ReflectionMethod $reflection_method) {
     if ($reflection_method->isStatic()) {
-      return parent::buildMethodBody($reflection_method);
+      // Static methods are forwarded to the class; the value they return
+      // has to be returned as well.
+      $output = parent::buildMethodBody($reflection_method);
+      $return_type = $reflection_method->getReturnType();
+      if ($return_type === NULL || (string) $return_type !== 'void') {
+        $output = preg_replace('/^    \\\\/', '    return \\\\', $output, 1);
+      }
+      return $output;
     }
     $write = empty($reflection_method->getAttributes(ReadOnlyMethod::class));
     $resolve = $write ? '$this->fiberLocalInstance()' : '$this->fiberLocalInstance(FALSE)';

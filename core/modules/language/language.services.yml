@@ -10,8 +10,6 @@ services:
     class: Drupal\language\LanguageNegotiationMethodManager
   language_negotiator:
     class: Drupal\language\LanguageNegotiator
-    calls:
-      - [initLanguageManager]
   Drupal\language\LanguageNegotiatorInterface: '@language_negotiator'
   language.config_subscriber:
     class: Drupal\language\EventSubscriber\ConfigSubscriber

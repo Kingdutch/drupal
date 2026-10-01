@@ -87,10 +87,20 @@ class FiberLocalProxyBuilderTest extends UnitTestCase {
     $this->assertStringContainsString('return $this->fiberLocalInstance()->increment($by);', $code);
     // Read-only methods resolve without cloning.
     $this->assertStringContainsString('return $this->fiberLocalInstance(FALSE)->get();', $code);
+    // Static methods are forwarded to the class, and return its value.
+    $this->assertStringContainsString('return \\' . FiberLocalCounter::class . '::describe($what);', $code);
     // Serialization stays with the proxy.
     $this->assertStringNotContainsString('__sleep', $code);
     $this->assertStringNotContainsString('__clone', $code);
     $this->assertStringContainsString('use \Drupal\Core\DependencyInjection\DependencySerializationTrait;', $code);
+  }
+
+  /**
+   * Tests that static calls on the proxy reach the class and return.
+   */
+  public function testStaticMethods(): void {
+    $proxy = $this->proxy();
+    $this->assertSame('counts sheep', $proxy::describe('sheep'));
   }
 
   /**

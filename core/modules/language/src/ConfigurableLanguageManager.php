@@ -4,7 +4,6 @@ namespace Drupal\language;
 
 use Drupal\Core\Cache\CacheBackendInterface;
 use Drupal\Core\Language\LanguageInterface;
-use Drupal\Core\Async\Fibers;
 use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\Extension\ModuleHandlerInterface;
 use Drupal\Core\Language\Language;
@@ -12,7 +11,6 @@ use Drupal\Core\Language\LanguageDefault;
 use Drupal\Core\Language\LanguageManager;
 use Drupal\Core\StringTranslation\TranslatableMarkup;
 use Drupal\Core\Url;
-use Drupal\Core\Utility\FiberResumeType;
 use Drupal\language\Config\LanguageConfigFactoryOverrideInterface;
 use Drupal\language\Entity\ConfigurableLanguage;
 use Symfony\Component\HttpFoundation\RequestStack;
@@ -439,35 +437,17 @@ class ConfigurableLanguageManager extends LanguageManager implements Configurabl
                 $this->negotiatedLanguages[LanguageInterface::TYPE_INTERFACE] = $language;
               }
 
-              $check_access_fn = function () use ($url) {
-                try {
-                  return $url instanceof Url && $url->access();
-                }
-                catch (\Exception) {
-                  return FALSE;
-                }
-              };
-              // If this method is running in a Fiber, contain the URL access
-              // checks to within child fibers. This is to prevent the
-              // negotiated languages changes from escaping to other fibers
-              // where rendering or other processes could run in the context of
-              // the wrong languages.
-              if (\Fiber::getCurrent()) {
-                $fiber = Fibers::create($check_access_fn);
-                $fiber->start();
-                while (!$fiber->isTerminated()) {
-                  if ($fiber->isSuspended()) {
-                    $resume_type = $fiber->resume();
-                    if (!$fiber->isTerminated() && $resume_type !== FiberResumeType::Immediate) {
-                      usleep(500);
-                    }
-                  }
-                }
-                return $fiber->getReturn();
+              // The access check may suspend the current fiber, for example to
+              // batch entity loads. The temporarily changed negotiated
+              // languages cannot escape to other fibers meanwhile: the
+              // language manager is a fiber-local service, so each fiber works
+              // on its own copy.
+              try {
+                return $url instanceof Url && $url->access();
               }
-
-              // If not running in a fiber, check URL access as usual.
-              return $check_access_fn();
+              catch (\Exception) {
+                return FALSE;
+              }
             });
             $this->negotiatedLanguages = $original_languages;
 

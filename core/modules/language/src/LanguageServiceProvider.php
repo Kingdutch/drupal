@@ -50,7 +50,17 @@ class LanguageServiceProvider extends ServiceProviderBase {
       ->addArgument(new Reference('module_handler'))
       ->addArgument(new Reference('language.config_factory_override'))
       ->addArgument(new Reference('request_stack'))
-      ->addArgument(new Reference('cache.bootstrap'));
+      ->addArgument(new Reference('cache.bootstrap'))
+      // The negotiated languages are state of the current request and may
+      // be changed temporarily while rendering, so every fiber gets its own
+      // copy of the manager.
+      ->addTag('fiber_local')
+      // The negotiator depends on the language manager and vice versa. Wiring
+      // the negotiator here, rather than from the negotiator's own definition,
+      // initializes the instance the container builds, which is the template
+      // every fiber's copy is made from. The fiber-local proxy breaks the
+      // circular reference.
+      ->addMethodCall('setNegotiator', [new Reference('language_negotiator')]);
     if ($default_language_values = $this->getDefaultLanguageValues()) {
       $container->setParameter('language.default_values', $default_language_values);
     }
