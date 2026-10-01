@@ -10,6 +10,7 @@ use Drupal\Core\Ajax\MessageCommand;
 use Drupal\Core\Ajax\RedirectCommand;
 use Drupal\Core\Ajax\ReplaceCommand;
 use Drupal\Core\Asset\AttachedAssets;
+use Drupal\Core\Async\Fibers;
 use Drupal\Core\Asset\AttachedAssetsInterface;
 use Drupal\Core\Cache\CacheableMetadata;
 use Drupal\Core\Config\ConfigFactoryInterface;
@@ -498,7 +499,7 @@ class BigPipe {
         continue;
       }
       $placeholder_render_array = $placeholders[$placeholder_id];
-      $fibers[$placeholder_id] = new \Fiber(fn() => $this->renderPlaceholder($placeholder_id, $placeholder_render_array));
+      $fibers[$placeholder_id] = Fibers::create(fn() => $this->renderPlaceholder($placeholder_id, $placeholder_render_array));
     }
     $iterations = 0;
     while (count($fibers) > 0) {

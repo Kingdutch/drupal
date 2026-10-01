@@ -4,6 +4,7 @@ namespace Drupal\Core\Session;
 
 use Drupal\Core\Cache\CacheOptionalInterface;
 use Drupal\Core\Cache\CacheableMetadata;
+use Drupal\Core\Async\Fibers;
 use Drupal\Core\Cache\CacheBackendInterface;
 use Drupal\Core\Cache\VariationCacheInterface;
 use Drupal\Core\Utility\FiberResumeType;
@@ -50,7 +51,7 @@ class AccessPolicyProcessor implements AccessPolicyProcessorInterface {
     // If running in a fiber and processing a different account, prevent the
     // account switch from escaping to outside the fiber by resuming the fiber
     // if it was suspended.
-    $fiber = new \Fiber([$this, 'doProcessAccessPolicies']);
+    $fiber = Fibers::create($this->doProcessAccessPolicies(...));
     $fiber->start($account, $scope);
     while (!$fiber->isTerminated()) {
       if ($fiber->isSuspended()) {

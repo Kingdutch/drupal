@@ -4,6 +4,7 @@ namespace Drupal\language;
 
 use Drupal\Core\Cache\CacheBackendInterface;
 use Drupal\Core\Language\LanguageInterface;
+use Drupal\Core\Async\Fibers;
 use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\Extension\ModuleHandlerInterface;
 use Drupal\Core\Language\Language;
@@ -452,7 +453,7 @@ class ConfigurableLanguageManager extends LanguageManager implements Configurabl
               // where rendering or other processes could run in the context of
               // the wrong languages.
               if (\Fiber::getCurrent()) {
-                $fiber = new \Fiber($check_access_fn);
+                $fiber = Fibers::create($check_access_fn);
                 $fiber->start();
                 while (!$fiber->isTerminated()) {
                   if ($fiber->isSuspended()) {

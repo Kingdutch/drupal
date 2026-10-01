@@ -7,6 +7,7 @@ use Drupal\Component\Utility\Html;
 use Drupal\Component\Utility\Variable;
 use Drupal\Component\Utility\Xss;
 use Drupal\Core\Access\AccessResultInterface;
+use Drupal\Core\Async\Fibers;
 use Drupal\Core\Cache\Cache;
 use Drupal\Core\Cache\CacheableDependencyInterface;
 use Drupal\Core\Cache\CacheableMetadata;
@@ -616,7 +617,7 @@ class Renderer implements RendererInterface {
     // Set the provided context and call the callable, it will use that context.
     $this->setCurrentRenderContext($context);
 
-    $fiber = new \Fiber(static fn () => $callable());
+    $fiber = Fibers::create(static fn () => $callable());
     $fiber->start();
     $resume_type = NULL;
     while (!$fiber->isTerminated()) {
@@ -741,7 +742,7 @@ class Renderer implements RendererInterface {
       }
       else {
         // Get the render array for the given placeholder.
-        $fibers[$placeholder] = new \Fiber(function () use ($placeholder_element) {
+        $fibers[$placeholder] = Fibers::create(function () use ($placeholder_element) {
           return [$this->doRenderPlaceholder($placeholder_element), $placeholder_element];
         });
       }

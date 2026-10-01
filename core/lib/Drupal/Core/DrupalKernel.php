@@ -10,6 +10,7 @@ use Drupal\Component\Serialization\PhpSerialize;
 use Drupal\Component\Utility\UrlHelper;
 use Drupal\Core\Cache\DatabaseBackend;
 use Drupal\Core\ClassLoader\BackwardsCompatibilityClassLoader;
+use Drupal\Core\Async\ContextPropagatingDriver;
 use Drupal\Core\Config\BootstrapConfigStorageFactory;
 use Drupal\Core\Config\NullStorage;
 use Drupal\Core\DependencyInjection\ContainerBuilder;
@@ -501,6 +502,13 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
     if (!$this->sitePath) {
       throw new \Exception('Kernel does not have site path set before calling boot()');
     }
+
+    // Make every callback registered with the event loop inherit the
+    // execution context (current user and other fiber-local state) of the
+    // code that registered it. This has to happen before anything schedules
+    // work on the loop, and belongs in the runtime once Drupal has one.
+    // @see https://www.drupal.org/project/drupal/issues/3313404
+    ContextPropagatingDriver::install();
 
     // Initialize the FileCacheFactory component. We have to do it here instead
     // of in \Drupal\Component\FileCache\FileCacheFactory because we can not use
