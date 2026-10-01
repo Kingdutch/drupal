@@ -42,13 +42,19 @@ final class ContextPropagatingDriver implements Driver {
   /**
    * Wraps the active event loop driver, unless it is wrapped already.
    *
-   * @throws \Error
-   *   If the active driver is running; Revolt refuses to swap it then.
+   * @throws \LogicException
+   *   If the loop has already been used: Revolt refuses to swap a driver
+   *   whose loop fiber is running or suspended, which is the case after any
+   *   await from the main fiber. The runtime has to install the decorator
+   *   before it schedules anything on the loop.
    */
   public static function install(): void {
     $driver = EventLoop::getDriver();
     if ($driver instanceof self) {
       return;
+    }
+    if ($driver->isRunning()) {
+      throw new \LogicException('The context propagating event loop driver must be installed before the event loop is used.');
     }
     EventLoop::setDriver(new self($driver));
   }
