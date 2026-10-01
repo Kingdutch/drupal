@@ -9,6 +9,7 @@ use Drupal\Core\Language\LanguageInterface;
 use Drupal\KernelTests\KernelTestBase;
 use Drupal\language\Entity\ConfigurableLanguage;
 use Drupal\language\FiberLocalProxy\ConfigurableLanguageManager as ConfigurableLanguageManagerProxy;
+use Drupal\language\FiberLocalProxy\LanguageNegotiator as LanguageNegotiatorProxy;
 use Drupal\language\LanguageNegotiatorInterface;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
@@ -56,6 +57,10 @@ class FiberLocalLanguageManagerTest extends KernelTestBase {
     $manager = \Drupal::languageManager();
     $this->assertInstanceOf(ConfigurableLanguageManagerProxy::class, $manager);
     $this->assertInstanceOf(LanguageNegotiatorInterface::class, $manager->getNegotiator());
+    // The manager and the negotiator are isolated as a pair: the manager's
+    // copies all delegate to the negotiator through its own proxy.
+    $this->assertInstanceOf(LanguageNegotiatorProxy::class, $manager->getNegotiator());
+    $this->assertSame($manager->getNegotiator(), $this->container->get('language_negotiator'));
   }
 
 }

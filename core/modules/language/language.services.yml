@@ -10,6 +10,11 @@ services:
     class: Drupal\language\LanguageNegotiationMethodManager
   language_negotiator:
     class: Drupal\language\LanguageNegotiator
+    # The negotiator holds the current user and a cache of negotiation
+    # results, state of the current request that the fiber-local language
+    # manager delegates to; isolate the pair as a unit.
+    tags:
+      - { name: fiber_local }
   Drupal\language\LanguageNegotiatorInterface: '@language_negotiator'
   language.config_subscriber:
     class: Drupal\language\EventSubscriber\ConfigSubscriber
