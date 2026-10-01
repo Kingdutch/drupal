@@ -10,6 +10,7 @@ use Drupal\Core\DependencyInjection\Compiler\BackwardsCompatibilityClassLoaderPa
 use Drupal\Core\DependencyInjection\Compiler\CorsCompilerPass;
 use Drupal\Core\DependencyInjection\Compiler\DeprecatedServicePass;
 use Drupal\Core\DependencyInjection\Compiler\DevelopmentSettingsPass;
+use Drupal\Core\DependencyInjection\Compiler\FiberLocalServicesPass;
 use Drupal\Core\DependencyInjection\Compiler\ConsoleCompilerPass;
 use Drupal\Core\Hook\HookCollectorPass;
 use Drupal\Core\Hook\HookCollectorKeyValueWritePass;
@@ -83,6 +84,7 @@ class CoreServiceProvider implements ServiceProviderInterface, ServiceModifierIn
 
     $container->addCompilerPass(new SuperUserAccessPolicyPass());
 
+    $container->addCompilerPass(new FiberLocalServicesPass());
     $container->addCompilerPass(new ProxyServicesPass());
 
     $container->addCompilerPass(new BackendCompilerPass());

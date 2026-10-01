@@ -11,6 +11,8 @@ use Drupal\Component\Utility\UrlHelper;
 use Drupal\Core\Cache\DatabaseBackend;
 use Drupal\Core\ClassLoader\BackwardsCompatibilityClassLoader;
 use Drupal\Core\Async\ContextPropagatingDriver;
+use Drupal\Core\Async\FiberLocalProxyClassLoader;
+use Drupal\Core\Async\FiberLocalServices;
 use Drupal\Core\Config\BootstrapConfigStorageFactory;
 use Drupal\Core\Config\NullStorage;
 use Drupal\Core\DependencyInjection\ContainerBuilder;
@@ -509,6 +511,9 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
     // work on the loop, and belongs in the runtime once Drupal has one.
     // @see https://www.drupal.org/project/drupal/issues/3313404
     ContextPropagatingDriver::install();
+    // Proxies for services tagged fiber_local that are not committed to a
+    // PSR-4 path are generated on first use.
+    FiberLocalProxyClassLoader::register();
 
     // Initialize the FileCacheFactory component. We have to do it here instead
     // of in \Drupal\Component\FileCache\FileCacheFactory because we can not use
@@ -1070,6 +1075,10 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
     }
 
     $this->attachSynthetic($container);
+
+    // Per-fiber copies of fiber_local services belong to the previous
+    // container's services.
+    FiberLocalServices::reset();
 
     $this->container = $container;
     if ($session_started) {

@@ -1700,6 +1700,8 @@ services:
   account_switcher:
     class: Drupal\Core\Session\AccountSwitcher
     arguments: ['@current_user', '@session_handler.write_safe']
+    tags:
+      - { name: fiber_local }
   Drupal\Core\Session\AccountSwitcherInterface: '@account_switcher'
   access_policy_processor:
     class: Drupal\Core\Session\AccessPolicyProcessor
@@ -1729,6 +1731,8 @@ services:
   current_user:
     class: Drupal\Core\Session\AccountProxy
     arguments: ['@event_dispatcher']
+    tags:
+      - { name: fiber_local }
   Drupal\Core\Session\AccountInterface: '@current_user'
   Drupal\Core\Session\AccountProxyInterface: '@current_user'
   session_configuration:

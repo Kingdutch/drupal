@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Drupal\Tests\Core\Async;
 
-use EventLoop\CallbackType;
 use Drupal\Core\Async\Context;
 use Drupal\Core\Async\ContextKey;
 use Drupal\Core\Async\ContextPropagatingDriver;
@@ -14,6 +13,7 @@ use Drupal\Tests\UnitTestCase;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Group;
 use Revolt\EventLoop;
+use Revolt\EventLoop\CallbackType;
 use Revolt\EventLoop\Driver;
 use Revolt\EventLoop\Driver\StreamSelectDriver;
 

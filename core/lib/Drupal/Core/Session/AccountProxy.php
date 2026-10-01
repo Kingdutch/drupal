@@ -2,6 +2,7 @@
 
 namespace Drupal\Core\Session;
 
+use Drupal\Core\Async\Attribute\ReadOnlyMethod;
 use Drupal\Core\DependencyInjection\DependencySerializationTrait;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
@@ -87,6 +88,7 @@ class AccountProxy implements AccountProxyInterface {
   /**
    * {@inheritdoc}
    */
+  #[ReadOnlyMethod]
   public function id() {
     return $this->id;
   }

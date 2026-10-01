@@ -4,10 +4,8 @@ namespace Drupal\Core\Session;
 
 use Drupal\Core\Cache\CacheOptionalInterface;
 use Drupal\Core\Cache\CacheableMetadata;
-use Drupal\Core\Async\Fibers;
 use Drupal\Core\Cache\CacheBackendInterface;
 use Drupal\Core\Cache\VariationCacheInterface;
-use Drupal\Core\Utility\FiberResumeType;
 
 /**
  * Processes access policies into permissions for an account.
@@ -41,28 +39,10 @@ class AccessPolicyProcessor implements AccessPolicyProcessorInterface {
    * {@inheritdoc}
    */
   public function processAccessPolicies(AccountInterface $account, string $scope = AccessPolicyInterface::SCOPE_DRUPAL): CalculatedPermissionsInterface {
-    // No Fiber isolation is needed when not in a Fiber, or when the requested
-    // account is the current user (no account switch will occur in
-    // doProcessAccessPolicies, so there is nothing to isolate).
-    if (!\Fiber::getCurrent() || $account->id() === $this->currentUser->id()) {
-      return $this->doProcessAccessPolicies($account, $scope);
-    }
-
-    // If running in a fiber and processing a different account, prevent the
-    // account switch from escaping to outside the fiber by resuming the fiber
-    // if it was suspended.
-    $fiber = Fibers::create($this->doProcessAccessPolicies(...));
-    $fiber->start($account, $scope);
-    while (!$fiber->isTerminated()) {
-      if ($fiber->isSuspended()) {
-        $resume_type = $fiber->resume();
-        if (!$fiber->isTerminated() && $resume_type !== FiberResumeType::Immediate) {
-          usleep(500);
-        }
-      }
-    }
-
-    return $fiber->getReturn();
+    // The account switch in doProcessAccessPolicies() cannot escape to other
+    // fibers: the current user and the account switcher are fiber-local
+    // services, so each fiber works on its own copy.
+    return $this->doProcessAccessPolicies($account, $scope);
   }
 
   /**
