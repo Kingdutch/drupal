@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Drupal\Core\Runtime;
 
 use Symfony\Component\Runtime\Internal\MissingDotenv;
+use Symfony\Component\Runtime\Runner\Symfony\HttpKernelRunner;
+use Symfony\Component\Runtime\Runner\Symfony\ResponseRunner;
+use Symfony\Component\Runtime\RunnerInterface;
 use Symfony\Component\Runtime\SymfonyRuntime;
 
 /**
@@ -33,6 +36,21 @@ class DrupalRuntime extends SymfonyRuntime {
     }
 
     parent::__construct($options);
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getRunner(?object $application): RunnerInterface {
+    $runner = parent::getRunner($application);
+    // Let asynchronous work scheduled during a request complete after the
+    // response has been sent. A worker runner serves many requests from one
+    // loop of its own and needs this per request instead, which it does not
+    // support yet.
+    if ($runner instanceof HttpKernelRunner || $runner instanceof ResponseRunner) {
+      return new EventLoopRunner($runner);
+    }
+    return $runner;
   }
 
 }

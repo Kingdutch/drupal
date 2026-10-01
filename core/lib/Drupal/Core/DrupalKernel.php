@@ -507,10 +507,16 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
 
     // Make every callback registered with the event loop inherit the
     // execution context (current user and other fiber-local state) of the
-    // code that registered it. This has to happen before anything schedules
-    // work on the loop, and belongs in the runtime once Drupal has one.
-    // @see https://www.drupal.org/project/drupal/issues/3313404
-    ContextPropagatingDriver::install();
+    // code that registered it. The runtime does this before anything can
+    // schedule work on the loop; this is the fallback for kernels booted
+    // without it, such as from tests and scripts.
+    // @see \Drupal\Core\Runtime\EventLoopRunner
+    try {
+      ContextPropagatingDriver::install();
+    }
+    catch (\LogicException $e) {
+      trigger_error($e->getMessage() . ' Callbacks registered with the event loop will not inherit the execution context.', E_USER_WARNING);
+    }
     // Proxies for services tagged fiber_local that are not committed to a
     // PSR-4 path are generated on first use.
     FiberLocalProxyClassLoader::register();
