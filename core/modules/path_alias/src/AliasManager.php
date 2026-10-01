@@ -2,11 +2,11 @@
 
 namespace Drupal\path_alias;
 
+use Drupal\Core\Async\Async;
 use Drupal\Component\Datetime\TimeInterface;
 use Drupal\Core\Cache\CacheBackendInterface;
 use Drupal\Core\Language\LanguageInterface;
 use Drupal\Core\Language\LanguageManagerInterface;
-use Drupal\Core\Utility\FiberResumeType;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 /**
@@ -139,9 +139,7 @@ class AliasManager implements AliasManagerInterface {
 
     // If we're inside a Fiber, suspend now, this allows other fibers to collect
     // more requested paths.
-    if (\Fiber::getCurrent() !== NULL) {
-      \Fiber::suspend(FiberResumeType::Immediate);
-    }
+    Async::suspend();
 
     // If we reach here, then either there are no other Fibers, or none of them
     // have aliases left to look up. Check the static caches in case the path

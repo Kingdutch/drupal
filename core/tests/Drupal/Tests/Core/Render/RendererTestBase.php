@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Drupal\Tests\Core\Render;
 
+use Drupal\Core\Async\Async;
 use Drupal\Component\Datetime\Time;
 use Drupal\Component\Datetime\TimeInterface;
 use Drupal\Core\Cache\Cache;
@@ -370,9 +371,7 @@ class PlaceholdersTest implements TrustedCallbackInterface {
   public static function callbackPerUser($animal): array {
     // As well as adding the user cache context, additionally suspend the
     // current Fiber if there is one.
-    if ($fiber = \Fiber::getCurrent()) {
-      $fiber->suspend();
-    }
+    Async::suspend();
     $build = static::callback($animal);
     $build['#cache']['contexts'][] = 'user';
     return $build;

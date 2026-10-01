@@ -6,6 +6,7 @@ namespace Drupal\Tests\big_pipe\Unit\Render;
 
 use Drupal\big_pipe\Render\BigPipe;
 use Drupal\big_pipe\Render\BigPipeResponse;
+use Drupal\Core\Async\Async;
 use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\Messenger\MessengerInterface;
 use Drupal\Core\Render\ElementInfoManagerInterface;
@@ -129,12 +130,8 @@ class TurtleLazyBuilder implements TrustedCallbackInterface {
    *   The lazy builder callback.
    */
   public static function turtle(): array {
-    if (\Fiber::getCurrent() !== NULL) {
-      \Fiber::suspend();
-    }
-    if (\Fiber::getCurrent() !== NULL) {
-      \Fiber::suspend();
-    }
+    Async::suspend();
+    Async::suspend();
     return [
       '#markup' => '<span>Turtle is finally here. But how?</span>',
     ];

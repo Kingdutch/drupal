@@ -2,6 +2,7 @@
 
 namespace Drupal\views;
 
+use Drupal\Core\Async\Async;
 use Drupal\Component\Utility\NestedArray;
 use Drupal\Core\Cache\Cache;
 use Drupal\Core\Cache\CacheBackendInterface;
@@ -95,7 +96,7 @@ class ViewsData {
       // entering here, that indicates a separate fiber started loading views
       // data but has not completed. Suspend this fiber once to give the other
       // fiber a chance to complete loading.
-      \Fiber::suspend();
+      Async::suspend();
     }
 
     if (!$this->fullyLoaded) {
@@ -128,7 +129,7 @@ class ViewsData {
       // entering here, that indicates a separate fiber started loading views
       // data but has not completed. Suspend this fiber once to give the other
       // fiber a chance to complete loading.
-      \Fiber::suspend();
+      Async::suspend();
     }
 
     if (!isset($this->storage[$key])) {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Drupal\Core\Async;
 
 use Drupal\Core\Async\Internal\FutureState;
+use Drupal\Core\Utility\FiberResumeType;
 use Revolt\EventLoop;
 
 /**
@@ -44,6 +45,32 @@ final class Async {
       }
     });
     return new Future($state);
+  }
+
+  /**
+   * Suspends the current fiber briefly so that other work can run.
+   *
+   * This is the one way core code yields. Inside a task on the event loop it
+   * lets every other queued task run before continuing, which is what
+   * batching loaders such as entity storage rely on to collect more IDs.
+   * Inside a fiber that something other than the loop drives, it suspends
+   * the fiber and leaves resumption to whoever drives it. In the main fiber
+   * there is nothing to yield to, so it returns immediately.
+   *
+   * Calling \Fiber::suspend() directly inside a task is not supported: the
+   * event loop would never resume that fiber.
+   */
+  public static function suspend(): void {
+    if (\Fiber::getCurrent() === NULL) {
+      return;
+    }
+    if (ContextStorage::isLoopManaged()) {
+      $suspension = EventLoop::getSuspension();
+      EventLoop::queue(static fn () => $suspension->resume());
+      $suspension->suspend();
+      return;
+    }
+    \Fiber::suspend(FiberResumeType::Immediate);
   }
 
 }

@@ -87,7 +87,9 @@ final class Future {
    *
    * Each yielded future is complete, so await() on it returns or throws
    * immediately; that is how a caller handles every outcome without one
-   * failure aborting the rest.
+   * failure aborting the rest. Futures that completed since the consumer
+   * last looked are yielded in input order, so input order expresses a
+   * preference between work that finishes at the same time.
    *
    * @param iterable<array-key, self> $futures
    *   The futures.
@@ -115,11 +117,13 @@ final class Future {
         }
       });
     }
+    $positions = array_flip(array_keys($pending));
     while ($pending) {
       if (!$completed) {
         $waiting = TRUE;
         $suspension->suspend();
       }
+      usort($completed, static fn ($a, $b) => $positions[$a] <=> $positions[$b]);
       while ($completed) {
         $key = array_shift($completed);
         $future = $pending[$key];

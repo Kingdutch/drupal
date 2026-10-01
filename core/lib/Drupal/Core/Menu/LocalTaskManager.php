@@ -2,6 +2,7 @@
 
 namespace Drupal\Core\Menu;
 
+use Drupal\Core\Async\Async;
 use Drupal\Component\Plugin\Exception\PluginException;
 use Drupal\Core\Access\AccessManagerInterface;
 use Drupal\Core\Cache\Cache;
@@ -299,7 +300,7 @@ class LocalTaskManager extends DefaultPluginManager implements LocalTaskManagerI
       // first fiber to complete building the data. If it is still not done,
       // proceed anyway, which may build that information twice but will not
       // return incomplete local task data.
-      \Fiber::suspend();
+      Async::suspend();
     }
 
     if (!isset($this->taskData[$route_name])) {

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Drupal\render_placeholder_message_test;
 
+use Drupal\Core\Async\Async;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
 use Drupal\Core\Render\RendererInterface;
 use Drupal\Core\Security\TrustedCallbackInterface;
@@ -134,12 +135,10 @@ class RenderPlaceholderMessageTestController implements TrustedCallbackInterface
    */
   public static function setAndLogMessage($message) {
     // Ensure that messages are rendered last even when earlier placeholders
-    // suspend the Fiber, this will cause BigPipe::renderPlaceholders() to loop
-    // around all of the fibers before resuming this one, then finally rendering
-    // the messages when there are no other placeholders left.
-    if (\Fiber::getCurrent() !== NULL) {
-      \Fiber::suspend();
-    }
+    // suspend: this lets every other placeholder task run before this one
+    // resumes, and the messages are rendered once no other placeholders are
+    // left.
+    Async::suspend();
     // Set message.
     \Drupal::messenger()->addStatus($message);
 

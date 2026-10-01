@@ -186,6 +186,38 @@ class ContextStorageTest extends UnitTestCase {
   }
 
   /**
+   * Tests that only fibers bound for the loop count as loop-managed.
+   */
+  public function testIsLoopManaged(): void {
+    $this->assertFalse(ContextStorage::isLoopManaged());
+
+    $bound = ContextStorage::bind(static fn () => ContextStorage::isLoopManaged(), TRUE);
+    $fiber = new \Fiber($bound);
+    $fiber->start();
+    $this->assertTrue($fiber->getReturn());
+
+    $unbound = ContextStorage::bind(static fn () => ContextStorage::isLoopManaged());
+    $fiber = new \Fiber($unbound);
+    $fiber->start();
+    $this->assertFalse($fiber->getReturn());
+
+    $fiber = Fibers::create(static fn () => ContextStorage::isLoopManaged());
+    $fiber->start();
+    $this->assertFalse($fiber->getReturn());
+
+    // A fiber created inside a loop-managed fiber is driven by whoever
+    // created it, not by the loop.
+    $nested = ContextStorage::bind(static function () {
+      $child = Fibers::create(static fn () => ContextStorage::isLoopManaged());
+      $child->start();
+      return [ContextStorage::isLoopManaged(), $child->getReturn()];
+    }, TRUE);
+    $fiber = new \Fiber($nested);
+    $fiber->start();
+    $this->assertSame([TRUE, FALSE], $fiber->getReturn());
+  }
+
+  /**
    * Tests that arguments to \Fiber::start() reach the callback.
    */
   public function testFibersCreateForwardsArguments(): void {

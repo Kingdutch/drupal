@@ -98,49 +98,49 @@ final class ContextPropagatingDriver implements Driver {
    * {@inheritdoc}
    */
   public function queue(\Closure $closure, mixed ...$args): void {
-    $this->inner->queue(ContextStorage::bind($closure), ...$args);
+    $this->inner->queue(ContextStorage::bind($closure, TRUE), ...$args);
   }
 
   /**
    * {@inheritdoc}
    */
   public function defer(\Closure $closure): string {
-    return $this->inner->defer(ContextStorage::bind($closure));
+    return $this->inner->defer(ContextStorage::bind($closure, TRUE));
   }
 
   /**
    * {@inheritdoc}
    */
   public function delay(float $delay, \Closure $closure): string {
-    return $this->inner->delay($delay, ContextStorage::bind($closure));
+    return $this->inner->delay($delay, ContextStorage::bind($closure, TRUE));
   }
 
   /**
    * {@inheritdoc}
    */
   public function repeat(float $interval, \Closure $closure): string {
-    return $this->inner->repeat($interval, ContextStorage::bind($closure));
+    return $this->inner->repeat($interval, ContextStorage::bind($closure, TRUE));
   }
 
   /**
    * {@inheritdoc}
    */
   public function onReadable(mixed $stream, \Closure $closure): string {
-    return $this->inner->onReadable($stream, ContextStorage::bind($closure));
+    return $this->inner->onReadable($stream, ContextStorage::bind($closure, TRUE));
   }
 
   /**
    * {@inheritdoc}
    */
   public function onWritable(mixed $stream, \Closure $closure): string {
-    return $this->inner->onWritable($stream, ContextStorage::bind($closure));
+    return $this->inner->onWritable($stream, ContextStorage::bind($closure, TRUE));
   }
 
   /**
    * {@inheritdoc}
    */
   public function onSignal(int $signal, \Closure $closure): string {
-    return $this->inner->onSignal($signal, ContextStorage::bind($closure));
+    return $this->inner->onSignal($signal, ContextStorage::bind($closure, TRUE));
   }
 
   /**

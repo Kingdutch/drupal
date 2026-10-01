@@ -4,7 +4,7 @@ namespace Drupal\Core\Entity;
 
 use Drupal\Core\Entity\Query\QueryInterface;
 use Drupal\Core\Cache\MemoryCache\MemoryCacheInterface;
-use Drupal\Core\Utility\FiberResumeType;
+use Drupal\Core\Async\Async;
 
 /**
  * A base entity storage class.
@@ -353,13 +353,12 @@ abstract class EntityStorageBase extends EntityHandlerBase implements EntityStor
       // load.
       $ids = array_diff($ids, array_keys($entities), $not_found);
 
-      $fiber = \Fiber::getCurrent();
-      if ($ids && $fiber !== NULL) {
+      if ($ids && \Fiber::getCurrent() !== NULL) {
         // Before suspending the fiber, add the IDs passed in to the full list
         // of entities to load, so that another call can load everything at
         // once.
         $this->entityIdsToLoad = array_unique(array_merge($this->entityIdsToLoad, $ids));
-        $fiber->suspend(FiberResumeType::Immediate);
+        Async::suspend();
 
         // If all the IDs we need to return have already been loaded into the
         // static cache, ignore any additionally requested entities here since

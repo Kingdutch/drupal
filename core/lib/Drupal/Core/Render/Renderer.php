@@ -7,7 +7,11 @@ use Drupal\Component\Utility\Html;
 use Drupal\Component\Utility\Variable;
 use Drupal\Component\Utility\Xss;
 use Drupal\Core\Access\AccessResultInterface;
-use Drupal\Core\Async\Fibers;
+use Drupal\Core\Async\Async;
+use Drupal\Core\Async\ContextKey;
+use Drupal\Core\Async\ContextStorage;
+use Drupal\Core\Async\Future;
+use Drupal\Core\Async\SharedInstances;
 use Drupal\Core\Cache\Cache;
 use Drupal\Core\Cache\CacheableDependencyInterface;
 use Drupal\Core\Cache\CacheableMetadata;
@@ -17,7 +21,6 @@ use Drupal\Core\Security\TrustedCallbackInterface;
 use Drupal\Core\Security\DoTrustedCallbackTrait;
 use Drupal\Core\Theme\ThemeManagerInterface;
 use Drupal\Core\Utility\CallableResolver;
-use Drupal\Core\Utility\FiberResumeType;
 use Symfony\Component\HttpFoundation\RequestStack;
 
 /**
@@ -41,21 +44,21 @@ class Renderer implements RendererInterface {
   protected $isRenderingRoot = FALSE;
 
   /**
-   * The render context collection.
+   * The key under which each fiber keeps its render contexts.
    *
-   * An individual global render context is tied to the current request. We then
-   * need to maintain a different context for each request to correctly handle
-   * rendering in subrequests.
+   * An individual render context is tied to the current request. We then need
+   * to maintain a different context for each request to correctly handle
+   * rendering in subrequests. The collection of contexts lives in the fiber's
+   * execution context, so that a placeholder rendered in one task can never
+   * push onto or pop from the context of another.
    *
    * This must be static as long as some controllers rebuild the container
    * during a request. This causes multiple renderer instances to co-exist
    * simultaneously, render state getting lost, and therefore causing pages to
    * fail to render correctly. As soon as it is guaranteed that during a request
    * the same container is used, it no longer needs to be static.
-   *
-   * @var \Drupal\Core\Render\RenderContext[]
    */
-  protected static $contextCollection;
+  protected static ContextKey $contextKey;
 
   /**
    * Constructs a new Renderer.
@@ -89,10 +92,7 @@ class Renderer implements RendererInterface {
     }
     $this->rendererConfig = $renderer_config;
 
-    // Initialize the context collection if needed.
-    if (!isset(static::$contextCollection)) {
-      static::$contextCollection = new \SplObjectStorage();
-    }
+    static::$contextKey ??= new ContextKey('render_context', copyOnWrite: TRUE);
   }
 
   /**
@@ -613,39 +613,18 @@ class Renderer implements RendererInterface {
     // to detect if a fiber suspends within a render context. When this happens,
     // we swap the previous render context in before suspending upwards, then
     // back out again before resuming.
+    // The render context is kept per fiber, so if the callable suspends,
+    // whatever runs in the meantime works on its own context and this one is
+    // still in place when the callable resumes.
     $previous_context = $this->getCurrentRenderContext();
-    // Set the provided context and call the callable, it will use that context.
     $this->setCurrentRenderContext($context);
-
-    $fiber = Fibers::create(static fn () => $callable());
-    $fiber->start();
-    $resume_type = NULL;
-    while (!$fiber->isTerminated()) {
-      if ($fiber->isSuspended()) {
-        // When ::executeInRenderContext() is executed within a Fiber, which is
-        // always the case when rendering placeholders, if the callback results
-        // in this fiber being suspended, we need to suspend again up to the
-        // parent Fiber. Doing so allows other placeholders to be rendered
-        // before returning here.
-        if (\Fiber::getCurrent() !== NULL) {
-          $this->setCurrentRenderContext($previous_context);
-          \Fiber::suspend(FiberResumeType::Immediate);
-          $this->setCurrentRenderContext($context);
-        }
-        $resume_type = $fiber->resume();
-      }
-      // If the fiber has been suspended and has not signaled that it can be
-      // immediately resumed, assume that the fiber is waiting on an async
-      // operation and wait a bit.
-      if (!$fiber->isTerminated() && $resume_type !== FiberResumeType::Immediate) {
-        usleep(500);
-      }
+    try {
+      $result = $callable();
+      assert($context->count() <= 1, 'Bubbling failed.');
     }
-    $result = $fiber->getReturn();
-    assert($context->count() <= 1, 'Bubbling failed.');
-
-    // Restore the original render context.
-    $this->setCurrentRenderContext($previous_context);
+    finally {
+      $this->setCurrentRenderContext($previous_context);
+    }
 
     return $result;
   }
@@ -675,7 +654,8 @@ class Renderer implements RendererInterface {
       return NULL;
     }
 
-    return static::$contextCollection[$request] ?? NULL;
+    $collection = ContextStorage::current()->get(static::$contextKey);
+    return $collection !== NULL && isset($collection[$request]) ? $collection[$request] : NULL;
   }
 
   /**
@@ -689,7 +669,17 @@ class Renderer implements RendererInterface {
    */
   protected function setCurrentRenderContext(?RenderContext $context = NULL) {
     $request = $this->requestStack->getCurrentRequest();
-    static::$contextCollection[$request] = $context;
+    $current = ContextStorage::current();
+    $collection = $current->get(static::$contextKey);
+    if ($collection === NULL) {
+      $collection = new \SplObjectStorage();
+    }
+    elseif (SharedInstances::isShared($collection)) {
+      // Inherited from the fiber that created this task: copy on write.
+      $collection = clone $collection;
+    }
+    $collection[$request] = $context;
+    ContextStorage::set($current->with(static::$contextKey, $collection));
     return $this;
   }
 
@@ -735,47 +725,18 @@ class Renderer implements RendererInterface {
 
     // First render all placeholders except 'status messages' placeholders.
     $message_placeholders = [];
-    $fibers = [];
+    $placeholders = [];
     foreach ($elements['#attached']['placeholders'] as $placeholder => $placeholder_element) {
       if (isset($placeholder_element['#lazy_builder']) && $placeholder_element['#lazy_builder'][0] === 'Drupal\Core\Render\Element\StatusMessages::renderMessages') {
         $message_placeholders[] = $placeholder;
       }
       else {
-        // Get the render array for the given placeholder.
-        $fibers[$placeholder] = Fibers::create(function () use ($placeholder_element) {
-          return [$this->doRenderPlaceholder($placeholder_element), $placeholder_element];
-        });
+        $placeholders[$placeholder] = $placeholder_element;
       }
     }
-    $iterations = 0;
-    while (count($fibers) > 0) {
-      foreach ($fibers as $placeholder => $fiber) {
-        if (!$fiber->isStarted()) {
-          $fiber->start();
-        }
-        elseif ($fiber->isSuspended()) {
-          $fiber->resume();
-        }
-        // If the Fiber hasn't terminated by this point, move onto the next
-        // placeholder, we'll resume this fiber again when we get back here.
-        if (!$fiber->isTerminated()) {
-          // If we've gone through the placeholders once already, and they're
-          // still not finished, then start to allow code higher up the stack to
-          // get on with something else.
-          if ($iterations) {
-            $fiber = \Fiber::getCurrent();
-            if ($fiber !== NULL) {
-              $fiber->suspend(FiberResumeType::Immediate);
-            }
-          }
-          continue;
-        }
-        [$markup, $placeholder_element] = $fiber->getReturn();
-
-        $elements = $this->doReplacePlaceholder($placeholder, $markup, $elements, $placeholder_element);
-        unset($fibers[$placeholder]);
-      }
-      $iterations++;
+    foreach ($this->renderPlaceholdersConcurrently($placeholders) as $placeholder => $get_result) {
+      [$markup, $placeholder_element] = $get_result();
+      $elements = $this->doReplacePlaceholder($placeholder, $markup, $elements, $placeholder_element);
     }
 
     // Then render 'status messages' placeholders.
@@ -784,6 +745,59 @@ class Renderer implements RendererInterface {
     }
 
     return TRUE;
+  }
+
+  /**
+   * Renders placeholders as tasks on the event loop.
+   *
+   * Each placeholder is rendered in a task of its own, so that a placeholder
+   * waiting on something (an entity load that is being batched, an I/O
+   * operation) lets the others progress. Results are yielded as they
+   * complete, in placeholder order for those that complete together.
+   *
+   * Inside a fiber that something other than the event loop drives there is
+   * no scheduler to hand the tasks to, so the placeholders are rendered one
+   * after the other in that fiber; a suspension inside a placeholder then
+   * reaches whoever drives the fiber, as before.
+   *
+   * @param array $placeholders
+   *   The placeholder elements, keyed by placeholder.
+   *
+   * @return \Generator<string, \Closure(): array>
+   *   For each placeholder, a closure returning the rendered markup and the
+   *   placeholder element with the metadata that bubbled up to it, or
+   *   throwing what its rendering threw.
+   */
+  protected function renderPlaceholdersConcurrently(array $placeholders): \Generator {
+    $render = function (array $placeholder_element): array {
+      return [$this->doRenderPlaceholder($placeholder_element), $placeholder_element];
+    };
+    if (\Fiber::getCurrent() !== NULL && !ContextStorage::isLoopManaged()) {
+      foreach ($placeholders as $placeholder => $placeholder_element) {
+        yield $placeholder => static fn () => $render($placeholder_element);
+      }
+      return;
+    }
+
+    $futures = [];
+    foreach ($placeholders as $placeholder => $placeholder_element) {
+      $futures[$placeholder] = Async::run($render, $placeholder_element);
+    }
+    try {
+      foreach (Future::iterate($futures) as $placeholder => $future) {
+        yield $placeholder => static fn () => $future->await();
+      }
+    }
+    finally {
+      // If the consumer stopped early, for example because a placeholder
+      // threw, the remaining tasks still complete on the loop; their outcome
+      // is no longer of interest.
+      foreach ($futures as $future) {
+        if (!$future->isComplete()) {
+          $future->ignore();
+        }
+      }
+    }
   }
 
   /**

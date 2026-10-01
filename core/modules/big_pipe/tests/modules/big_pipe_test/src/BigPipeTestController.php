@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Drupal\big_pipe_test;
 
+use Drupal\Core\Async\Async;
 use Drupal\big_pipe\Render\BigPipeMarkup;
 use Drupal\big_pipe_test\EventSubscriber\BigPipeTestSubscriber;
 use Drupal\Core\Form\EnforcedResponseException;
@@ -176,12 +177,9 @@ class BigPipeTestController implements TrustedCallbackInterface {
    *   and caching disabled to ensure dynamic rendering.
    */
   public static function piggy(): array {
-    // Immediately call Fiber::suspend(), so that other placeholders are
-    // executed next. When this is resumed, it will immediately return the
-    // render array.
-    if (\Fiber::getCurrent() !== NULL) {
-      \Fiber::suspend();
-    }
+    // Immediately suspend, so that other placeholders are executed next.
+    // When this is resumed, it will immediately return the render array.
+    Async::suspend();
     return [
       '#markup' => '<span>This 🐷 little 🐽 piggy 🐖 stayed 🐽 at 🐷 home.</span>',
       '#cache' => ['max-age' => 0],

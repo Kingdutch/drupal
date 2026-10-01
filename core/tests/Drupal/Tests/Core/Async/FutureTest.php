@@ -13,6 +13,7 @@ use Drupal\Core\Async\DeferredFuture;
 use Drupal\Core\Async\Future;
 use Drupal\Core\Async\Internal\FutureState;
 use Drupal\Core\Async\UnhandledFutureError;
+use Drupal\Core\Utility\FiberResumeType;
 use Drupal\Tests\UnitTestCase;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Group;
@@ -184,6 +185,61 @@ class FutureTest extends UnitTestCase {
     }
     $this->assertSame(['c' => 'c failed', 'b' => 'b done', 'a' => 'a done'], $order);
     $this->assertSame([], iterator_to_array(Future::iterate([])));
+  }
+
+  /**
+   * Tests that completions seen together are yielded in input order.
+   */
+  public function testIterateTieBreaksInInputOrder(): void {
+    $deferred = [];
+    $futures = [];
+    foreach (['c', 'a', 'b'] as $key) {
+      $deferred[$key] = new DeferredFuture();
+      $futures[$key] = $deferred[$key]->getFuture();
+    }
+    // Complete all three within one callback, so that the consumer only
+    // looks once they have all completed. The consumer is a task: the main
+    // fiber is interrupted by the loop after every callback and therefore
+    // sees completions one at a time, in completion order.
+    EventLoop::delay(0.001, static function () use ($deferred) {
+      $deferred['b']->complete('b');
+      $deferred['a']->complete('a');
+      $deferred['c']->complete('c');
+    });
+    $keys = Async::run(static fn () => array_keys(iterator_to_array(Future::iterate($futures))))->await();
+    $this->assertSame(['c', 'a', 'b'], $keys);
+  }
+
+  /**
+   * Tests suspend(): a no-op in main, a yield in a task, a suspend elsewhere.
+   */
+  public function testSuspend(): void {
+    // Main has nothing to yield to.
+    Async::suspend();
+    $this->assertNull(\Fiber::getCurrent());
+
+    // Inside a task, every other queued task runs before it continues.
+    $log = [];
+    $first = Async::run(static function () use (&$log) {
+      $log[] = 'first before';
+      Async::suspend();
+      $log[] = 'first after';
+    });
+    $second = Async::run(static function () use (&$log) {
+      $log[] = 'second';
+    });
+    Future::awaitAll([$first, $second]);
+    $this->assertSame(['first before', 'second', 'first after'], $log);
+
+    // Inside a fiber nobody registered with the loop, whoever drives the
+    // fiber gets control back.
+    $fiber = new \Fiber(static function () {
+      Async::suspend();
+      return 'done';
+    });
+    $this->assertSame(FiberResumeType::Immediate, $fiber->start());
+    $fiber->resume();
+    $this->assertSame('done', $fiber->getReturn());
   }
 
   /**

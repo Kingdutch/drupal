@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Drupal\twig_fibers_test\TwigExtension;
 
+use Drupal\Core\Async\Async;
 use Twig\Extension\AbstractExtension;
 use Twig\TwigFunction;
 
@@ -22,7 +23,7 @@ class FibersTestExtension extends AbstractExtension {
   }
 
   /**
-   * Custom Twig function that calls Fiber::suspend().
+   * Custom Twig function that suspends the current fiber.
    *
    * @param string $message
    *   The message to return.
@@ -31,7 +32,7 @@ class FibersTestExtension extends AbstractExtension {
    *   The processed message.
    */
   public function fibersTestFunction(string $message): string {
-    \Fiber::suspend();
+    Async::suspend();
     return 'Fibers test: ' . $message;
   }
 

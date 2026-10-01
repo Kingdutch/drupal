@@ -2,6 +2,7 @@
 
 namespace Drupal\Core\Theme;
 
+use Drupal\Core\Async\Async;
 use Drupal\Component\Utility\NestedArray;
 use Drupal\Core\Cache\Cache;
 use Drupal\Core\Cache\CacheBackendInterface;
@@ -173,7 +174,7 @@ class Registry implements DestructableInterface {
     // path to begin an asynchronous operation before we do the CPU-intensive
     // task of building the theme registry.
     if (\Fiber::getCurrent() !== NULL) {
-      \Fiber::suspend();
+      Async::suspend();
       // When the Fiber is resumed, check the cache again since it may have been
       // built in the meantime, either in this process or via a different
       // request altogether.
